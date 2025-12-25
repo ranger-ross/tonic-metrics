@@ -11,4 +11,6 @@ fn main() {
         .out_dir(&cwd)
         .compile_protos(&["protos/echo.proto"], &["proto"])
         .unwrap();
+
+    println!("File generated, remember to run cargo fmt before committing");
 }
