@@ -3,7 +3,9 @@ use tokio::test;
 use tonic::{Request, Response, Status, async_trait, transport::Server};
 use tonic_metrics::ServerMetricsLayer;
 
-use crate::hello_world::{
+mod echo;
+
+use echo::{
     EchoRequest, EchoResponse,
     echo_client::EchoClient,
     echo_server::{Echo, EchoServer},
@@ -59,10 +61,6 @@ async fn basic_server_metrics() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub mod hello_world {
-    tonic::include_proto!("echo");
-}
-
 #[derive(Default)]
 pub struct MyEchoService;
 
@@ -71,7 +69,7 @@ impl Echo for MyEchoService {
     async fn echo(&self, request: Request<EchoRequest>) -> Result<Response<EchoResponse>, Status> {
         println!("Got a request from {:?}", request.remote_addr());
 
-        let reply = hello_world::EchoResponse {
+        let reply = EchoResponse {
             message: request.into_inner().message,
         };
         Ok(Response::new(reply))

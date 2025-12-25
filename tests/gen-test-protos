@@ -1,0 +1,14 @@
+#!/usr/bin/env -S cargo -Zscript
+---cargo
+[dependencies]
+tonic-prost-build = "0.14.2"
+---
+
+fn main() {
+    let cwd = std::env::current_dir().unwrap();
+
+    tonic_prost_build::configure()
+        .out_dir(&cwd)
+        .compile_protos(&["protos/echo.proto"], &["proto"])
+        .unwrap();
+}
