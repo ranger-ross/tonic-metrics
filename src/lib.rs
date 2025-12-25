@@ -70,7 +70,7 @@ where
                 path[1..(sep).into()].to_string(),
                 path[usize::from(sep) + 1..].to_string(),
             ),
-            // If unparseable, say service is empty and method is the entire path
+            // If unparsable, say service is empty and method is the entire path
             None => ("".to_string(), path.to_string()),
         };
 
