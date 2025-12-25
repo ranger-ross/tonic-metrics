@@ -11,7 +11,7 @@ use metrics::{Unit, describe_histogram, histogram};
 use tonic::transport::Body;
 use tower::{Layer, Service};
 
-const RPC_SERVER_DURATION: &'static str = "rpc.server.duration";
+const RPC_SERVER_DURATION: &str = "rpc.server.duration";
 
 #[derive(Debug, Clone, Default)]
 pub struct ServerMetricsLayer {}
@@ -59,7 +59,7 @@ where
         let path = req.uri().path();
 
         let service_method_separator: Option<NonZeroUsize> = match path.chars().next() {
-            Some(first_char) if first_char == '/' => path[1..]
+            Some('/') => path[1..]
                 .find('/')
                 .map(|p| NonZeroUsize::new(p + 1).unwrap()),
             _ => None,
