@@ -1,0 +1,100 @@
+use metrics_util::debugging::{DebuggingRecorder, Snapshotter};
+use tokio::test;
+use tonic::{Request, Response, Status, async_trait, transport::Server};
+use tonic_metrics::ServerMetricsLayer;
+
+use crate::hello_world::{
+    EchoRequest, EchoResponse,
+    echo_client::EchoClient,
+    echo_server::{Echo, EchoServer},
+};
+
+const SNAPSHOT_FILTERS: [(&'static str, &'static str); 4] = [
+    (
+        r"Histogram\(\s*[\s\S]*?\s*\)",
+        "Histogram([HISTOGRAM_VALUE])",
+    ),
+    (
+        r#"Label\(\s*"server.port"\s*,\s*[\s\S]*?\s*\)"#,
+        r#"Label("server.port", [PORT])"#,
+    ),
+    (
+        r#"Label\(\s*"port"\s*,\s*[\s\S]*?\s*\)"#,
+        r#"Label("port", [PORT])"#,
+    ),
+    (r#"hash: \d*"#, "hash: [HASH]"),
+];
+
+#[test]
+async fn basic_server_metrics() -> Result<(), Box<dyn std::error::Error>> {
+    let snapshotter = install_debug_recorder();
+
+    let addr = "[::1]:50051".parse().unwrap();
+    let echo = MyEchoService::default();
+
+    println!("GreeterServer listening on {addr}");
+
+    let handle = tokio::spawn(async move {
+        Server::builder()
+            .layer(ServerMetricsLayer::default())
+            .add_service(EchoServer::new(echo))
+            .serve(addr)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    send_request().await.unwrap();
+
+    handle.abort();
+
+    let snapshot = snapshotter.snapshot();
+
+    println!("{:#?}", snapshot);
+    insta::with_settings!({filters => SNAPSHOT_FILTERS}, {
+        insta::assert_debug_snapshot!(snapshot);
+    });
+
+    Ok(())
+}
+
+pub mod hello_world {
+    tonic::include_proto!("echo");
+}
+
+#[derive(Default)]
+pub struct MyEchoService;
+
+#[async_trait]
+impl Echo for MyEchoService {
+    async fn echo(&self, request: Request<EchoRequest>) -> Result<Response<EchoResponse>, Status> {
+        println!("Got a request from {:?}", request.remote_addr());
+
+        let reply = hello_world::EchoResponse {
+            message: request.into_inner().message,
+        };
+        Ok(Response::new(reply))
+    }
+}
+
+async fn send_request() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = EchoClient::connect("http://[::1]:50051").await?;
+
+    let request = tonic::Request::new(EchoRequest {
+        message: "Hello".into(),
+    });
+
+    let response = client.echo(request).await?;
+
+    println!("RESPONSE={response:?}");
+
+    Ok(())
+}
+
+fn install_debug_recorder() -> Snapshotter {
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    recorder.install().unwrap();
+    snapshotter
+}

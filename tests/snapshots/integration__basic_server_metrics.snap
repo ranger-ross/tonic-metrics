@@ -1,0 +1,53 @@
+---
+source: tests/integration.rs
+expression: snapshot
+---
+Snapshot(
+    [
+        (
+            CompositeKey(
+                Histogram,
+                Key {
+                    name: KeyName(
+                        "rpc.server.duration",
+                    ),
+                    labels: [
+                        Label(
+                            "rpc.system",
+                            "grpc",
+                        ),
+                        Label(
+                            "network.protocol.name",
+                            "http",
+                        ),
+                        Label(
+                            "network.transport",
+                            "tcp",
+                        ),
+                        Label(
+                            "rpc.method",
+                            "Echo",
+                        ),
+                        Label(
+                            "rpc.service",
+                            "echo.Echo",
+                        ),
+                        Label(
+                            "network.protocol.version",
+                            "2",
+                        ),
+                    ],
+                    hashed: true,
+                    hash: [HASH],
+                },
+            ),
+            Some(
+                Milliseconds,
+            ),
+            Some(
+                "Measures the duration of inbound RPC",
+            ),
+            Histogram([HISTOGRAM_VALUE]),
+        ),
+    ],
+)
