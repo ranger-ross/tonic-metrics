@@ -12,4 +12,6 @@ This crate tries to adhere to [OpenTelemetry Semantic Conventions](https://opent
 The following metrics are supported:
 
 - [`rpc.server.duration`](https://opentelemetry.io/docs/specs/semconv/rpc/rpc-metrics/#metric-rpcserverduration)
+- [`rpc.client.duration`](https://opentelemetry.io/docs/specs/semconv/rpc/rpc-metrics/#metric-rpcclientduration)
+
 

@@ -1,7 +1,10 @@
 use metrics_util::debugging::{DebuggingRecorder, Snapshotter};
 use tokio::test;
-use tonic::{Request, Response, Status, async_trait, transport::Server};
-use tonic_metrics::ServerMetricsLayer;
+use tonic::{
+    Request, Response, Status, async_trait,
+    transport::{Channel, Server},
+};
+use tonic_metrics::{ServerMetricsLayer, client::ClientMetricsMiddleware};
 
 mod echo;
 
@@ -47,7 +50,40 @@ async fn basic_server_metrics() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    send_request().await.unwrap();
+    send_request(&addr.to_string(), false).await.unwrap();
+
+    handle.abort();
+
+    let snapshot = snapshotter.snapshot();
+
+    println!("{:#?}", snapshot);
+    insta::with_settings!({filters => SNAPSHOT_FILTERS}, {
+        insta::assert_debug_snapshot!(snapshot);
+    });
+
+    Ok(())
+}
+
+#[test]
+async fn basic_client_metrics() -> Result<(), Box<dyn std::error::Error>> {
+    let snapshotter = install_debug_recorder();
+
+    let addr = "[::1]:50051".parse().unwrap();
+    let echo = MyEchoService::default();
+
+    println!("GreeterServer listening on {addr}");
+
+    let handle = tokio::spawn(async move {
+        Server::builder()
+            .add_service(EchoServer::new(echo))
+            .serve(addr)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    send_request(&addr.to_string(), true).await.unwrap();
 
     handle.abort();
 
@@ -76,14 +112,27 @@ impl Echo for MyEchoService {
     }
 }
 
-async fn send_request() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = EchoClient::connect("http://[::1]:50051").await?;
+async fn send_request(
+    addr: &str,
+    use_client_middleware: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = format!("http://{addr}");
 
     let request = tonic::Request::new(EchoRequest {
         message: "Hello".into(),
     });
 
-    let response = client.echo(request).await?;
+    let response = if use_client_middleware {
+        let channel = Channel::from_shared(addr.to_string())?.connect().await?;
+        let metrics = ClientMetricsMiddleware::with_server_address(channel, Some(addr));
+        EchoClient::new(metrics).echo(request).await?
+    } else {
+        EchoClient::connect(addr)
+            .await
+            .unwrap()
+            .echo(request)
+            .await?
+    };
 
     println!("RESPONSE={response:?}");
 

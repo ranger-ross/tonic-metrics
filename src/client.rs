@@ -1,3 +1,5 @@
+use http::Request;
+use metrics::{Unit, describe_histogram, histogram};
 use std::{
     borrow::Cow,
     num::NonZeroUsize,
@@ -5,41 +7,50 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-
-use http::Request;
-use metrics::{Unit, describe_histogram, histogram};
 use tonic::transport::Body;
-use tower::{Layer, Service};
+use tower::Service;
 
-pub mod client;
-
-pub(crate) const RPC_SERVER_DURATION: &str = "rpc.server.duration";
-pub(crate) const RPC_CLIENT_DURATION: &str = "rpc.client.duration";
-
-#[derive(Debug, Clone, Default)]
-pub struct ServerMetricsLayer {}
-
-impl<S> Layer<S> for ServerMetricsLayer {
-    type Service = ServerMetricsMiddleware<S>;
-
-    fn layer(&self, service: S) -> Self::Service {
-        describe_histogram!(
-            RPC_SERVER_DURATION,
-            Unit::Milliseconds,
-            "Measures the duration of inbound RPC"
-        );
-        ServerMetricsMiddleware { inner: service }
-    }
-}
+use crate::RPC_CLIENT_DURATION;
 
 #[derive(Debug, Clone)]
-pub struct ServerMetricsMiddleware<S> {
+pub struct ClientMetricsMiddleware<S> {
     inner: S,
+    server_address: Option<String>,
+}
+
+impl<S> ClientMetricsMiddleware<S> {
+    pub fn new(inner: S) -> Self {
+        Self::with_server_address(inner, None::<String>)
+    }
+
+    pub fn with_server_address(inner: S, addr: Option<impl Into<String>>) -> Self {
+        describe_histogram!(
+            RPC_CLIENT_DURATION,
+            Unit::Milliseconds,
+            "Measures the duration of outbound RPC"
+        );
+
+        let addr = if let Some(addr) = addr.map(|v| v.into()) {
+            Some(if addr.starts_with("http://") {
+                addr[7..].to_string()
+            } else if addr.starts_with("https://") {
+                addr[8..].to_string()
+            } else {
+                addr
+            })
+        } else {
+            None
+        };
+        Self {
+            inner,
+            server_address: addr,
+        }
+    }
 }
 
 type BoxFuture<'a, T> = Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
-impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for ServerMetricsMiddleware<S>
+impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for ClientMetricsMiddleware<S>
 where
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send + 'static,
@@ -77,6 +88,13 @@ where
             None => ("".to_string(), path.to_string()),
         };
 
+        let server = match self.server_address.as_ref() {
+            Some(addr) => addr.clone(),
+            None => req.uri().host().unwrap_or("unknown").to_string(),
+        };
+
+        println!("\n\n URI: {:#?}", req.uri());
+
         let version = network_protocol_version(&req);
 
         Box::pin(async move {
@@ -85,13 +103,15 @@ where
             let duration = Instant::now().duration_since(start);
             let duration_millis = duration.as_millis() as f64;
 
-            let mut labels = Vec::with_capacity(7);
+            let mut labels = Vec::with_capacity(8);
             labels.push(("rpc.system", Cow::Borrowed("grpc")));
             labels.push(("network.protocol.name", Cow::Borrowed("http")));
             // TODO: If grpc eventually adds support for HTTP 3 this will be wrong :)
             labels.push(("network.transport", Cow::Borrowed("tcp")));
             labels.push(("rpc.method", Cow::Owned(rpc_method)));
             labels.push(("rpc.service", Cow::Owned(rpc_service)));
+
+            labels.push(("server.address", Cow::Owned(server)));
 
             if let Some(version) = version {
                 labels.push(("network.protocol.version", Cow::Borrowed(version)));
@@ -101,7 +121,7 @@ where
                 labels.push(("error.type", Cow::Owned(response.status().to_string())));
             }
 
-            histogram!(RPC_SERVER_DURATION, &labels).record(duration_millis);
+            histogram!(RPC_CLIENT_DURATION, &labels).record(duration_millis);
 
             Ok(response)
         })
