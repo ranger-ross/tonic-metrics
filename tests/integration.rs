@@ -48,7 +48,7 @@ async fn basic_server_metrics() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap();
     });
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     send_request(&addr.to_string(), false).await.unwrap();
 
@@ -81,7 +81,7 @@ async fn basic_client_metrics() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap();
     });
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     send_request(&addr.to_string(), true).await.unwrap();
 
