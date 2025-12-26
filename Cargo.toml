@@ -1,7 +1,17 @@
 [package]
 name = "tonic-metrics"
 version = "0.1.0"
+authors = ["Ross Sullivan <rosssullivan101@gmail.com>"]
 edition = "2024"
+description = "Metrics.rs integration for Tonic"
+documentation = "https://docs.rs/tonic-metrics"
+repository = "https://github.com/ranger-ross/tonic-metrics.git"
+keywords = ["tonic", "grpc", "middleware", "metrics", "prometheus"]
+categories = ["web-programming"]
+license = "MIT"
+readme = "README.md"
+exclude = [".gitignore", ".github/", "examples/"]
+
 
 [dependencies]
 http = "1.4.0"
